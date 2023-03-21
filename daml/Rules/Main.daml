@@ -1,0 +1,56 @@
+module Rules.Main where
+
+import DA.Map as M
+import DA.List as L
+
+import Types
+
+import Rules.Data
+import Rules.Move
+
+-- | Tries to apply a `CheckerMove` to a `GameState`
+tryMove : GameState -> GameMove -> MoveResult
+tryMove state move =
+  case tryMoveInner state move of
+    Left e -> Error e
+    Right ns -> case checkWin ns of
+      None -> NewState ns
+      Some p -> Winner p
+
+tryMoveInner : GameState -> GameMove -> E GameState
+tryMoveInner state move = do
+  md <- toMoveData state move
+  newMap <- simpleMove md
+  return state with
+    player = nextPlayer md newMap
+    pieces = map snd (M.toList newMap)
+
+
+-- | Checks whether either player has won in a given game state
+checkWin : GameState -> Optional Player
+checkWin s = case (hasPieces) of
+        (False, True) -> Some Red
+        (True, False) -> Some Black
+        (_, _) -> None
+    where
+      hasPieces = do
+          let (red, black) = partition (\p -> p.owner == Red) s.pieces
+          (L.null red, L.null black)
+
+
+-- | Returns the same player if players piece was not promoted,
+-- | opponents piece was captured, and has a subsequent capture
+nextPlayer : MoveData -> StateMap -> Player
+nextPlayer md newMap = do
+      let maybePiece = M.lookup md.to newMap
+          hasCapturable = case maybePiece of
+            None -> False
+            Some piece -> do
+              let opp = nbrOpponents piece newMap
+                  cap = L.filter (\o -> capturable piece o newMap) opp            
+              not (L.null cap)
+          wasNotPromoted = not $ needsPromotion md
+          wasJump = colD md.from md.to > 1
+      if (wasJump && wasNotPromoted && hasCapturable) then md.state.player
+      else if (md.state.player == Red) then Black
+      else Red

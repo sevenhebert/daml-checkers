@@ -1,0 +1,107 @@
+module Rules.Move where
+
+import DA.Foldable
+import DA.List as L
+import DA.Map as M
+import DA.Optional
+
+import Types
+
+import Rules.Data
+import Rules.Path
+
+
+movePiece : Coord -> Piece -> Piece
+movePiece coord piece = piece with coord
+
+-- | Helper function to apply a simple checkers move to
+simpleMove : MoveData -> E StateMap
+simpleMove md = do
+  _ <- checkVacant md
+  maybeCaptured <- case checkCapture md of
+    Left _ -> abort "Game should be in play"
+    Right None -> do
+        let cap = findCapturable md
+            msg = "Must take jump" <> (show cap)
+        assertMsg msg (L.null $ cap)
+        return $ None
+    Right cap -> return $ cap
+  movePath <- path md.piece.tp md.state.player md.from md.to
+  let target = fromOptional md.to maybeCaptured
+      newType = if (needsPromotion md) then King else md.piece.tp
+
+  forA_ movePath (\c -> assertMsg "Path blocked" (isNone $ M.lookup c md.stateMap))
+
+  return $
+    M.insert md.to (movePiece md.move.to md.piece) with tp = newType
+    (M.delete target (M.delete md.from md.stateMap))
+
+
+nbrOpponents : Piece -> StateMap -> [Piece]
+nbrOpponents player sm = do
+    let nbrCrds = nbrCoords player.coord 1
+        nbrs = map (`M.lookup` sm) nbrCrds
+    L.filter (\n -> player.owner /= n.owner) $ catOptionals nbrs
+
+
+isNotBacked : Piece -> Piece -> StateMap -> Bool
+isNotBacked player opp s = do
+    let oc = toIntCoord(opp.coord)
+        pc = toIntCoord(player.coord)
+        col = if (oc._1 > pc._1) then pc._1 + 2 else pc._1 - 2
+        row = case (player.tp, player.owner) of 
+                (King, _) -> if (oc._2 > pc._2) then pc._2 + 2 else  pc._2 - 2
+                (_, Red) -> pc._2 + 2
+                (_, _) -> pc._2 - 2
+    boardContains row && boardContains col && isNone (M.lookup (col, row) s)
+
+
+capturable : Piece -> Piece -> StateMap -> Bool
+capturable player opp s = do
+    let oc = toIntCoord(opp.coord)
+        pc = toIntCoord(player.coord)
+    if (player.tp == Pawn) then do
+      if (player.owner == Red) then oc._2 > pc._2 && isNotBacked player opp s
+      else oc._2 < pc._2 && isNotBacked player opp s
+    else isNotBacked player opp s
+
+-- | Finds any of the players capturable opponents
+findCapturable : MoveData -> [Piece]
+findCapturable md = do
+    let player = md.piece.owner
+        ownPieces = L.filter (\pc -> pc.owner == player) md.state.pieces
+    concatMap (\piece -> do
+                  let opp = nbrOpponents piece md.stateMap
+                  L.filter (\o -> capturable piece o md.stateMap) opp
+              ) ownPieces
+
+
+-- | Checks if the space the player moved to was vacant
+checkVacant : MoveData -> E Bool
+checkVacant md = do 
+  assertMsg "Space is not vacant" (isNone $ M.lookup md.to md.stateMap)
+  return $ True
+
+
+-- | Checks whether a move is a capture
+checkCapture : MoveData -> E Capture
+checkCapture md = do
+    if (colD md.from md.to > 1) then do
+        let 
+            cs = if md.to._1 > md.from._1 then 1 else -1
+            rs = if md.to._2 > md.from._2 then 1 else -1
+            target = (md.from._1 + cs, md.from._2 + rs)
+            tgtPiece = M.lookup target md.stateMap
+            tgtCoord = fmap coord tgtPiece
+            tgtOwner = fmap owner tgtPiece
+        assertMsg "Can't capture own piece" (tgtOwner /= Some md.state.player)
+        return $ fmap toIntCoord tgtCoord
+    else return $ None
+
+
+-- | Checks whether or not a piece needs a promotion
+needsPromotion : MoveData -> Bool
+needsPromotion md = case (md.state.player, md.to._2) of 
+        (Red, 7) -> True
+        (Black, 0) -> True
+        _ -> False

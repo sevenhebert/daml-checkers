@@ -1,0 +1,25 @@
+module Rules.Path where
+
+import Types
+
+import Rules.Data
+
+-- | Path of move
+path : PieceType -> Player -> IntCoord -> IntCoord -> E [IntCoord]
+
+path _ _ from to
+  | from == to = abort "Null move is not valid"
+
+path Pawn Red from to = do -- Red pawns can only move SE/SW (+(1 or 2), +/-(1 or 2))
+  assertMsg "Invalid move" (colD from to == rowD from to && from._2 < to._2)
+  return []
+
+path Pawn Black from to = do -- Black pawns can only move NE/NW (+(1 or 2), +/-(1 or 2))
+  assertMsg "Invalid move" (colD from to == rowD from to && from._2 > to._2)
+  return []
+
+path King _ from to = do -- King can only move diagonally
+  let cd = colD from to
+      rd = rowD from to
+  assertMsg "Invalid move" (cd <= 2 && rd == cd)
+  return []

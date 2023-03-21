@@ -1,0 +1,5 @@
+module Tests.All where
+
+import Init()
+import Tests.Checkers()
+import Tests.Rules()

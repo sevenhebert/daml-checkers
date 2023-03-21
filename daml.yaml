@@ -1,0 +1,19 @@
+sdk-version: 2.5.5
+name: game
+version: 0.1.0
+source: daml
+parties:
+  - alice
+  - bob
+  - Ref
+dependencies:
+  - daml-prim
+  - daml-stdlib
+  - daml-script
+start-navigator: true
+codegen:
+  js:
+    output-directory: ui/daml.js
+    npm-scope: daml.js
+# Remove this line when running against a ledger without user management.
+init-script: Init:setup

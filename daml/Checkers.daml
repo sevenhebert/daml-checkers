@@ -1,0 +1,79 @@
+module Checkers where
+
+import Rules.Main
+import Rules.Data
+import Types
+
+template GameProposal
+  with
+    gameId : GameId
+    proposer : Party
+  where
+    signatory proposer
+    observer oppositePlayer proposer gameId
+    let receiver = oppositePlayer proposer gameId
+    
+    choice StartGame : ContractId Game
+      controller receiver
+        do
+          create Game with
+            gameId
+            state = (Rules.Data.initState())
+    
+    choice DeclineGame : ContractId Declined
+      controller receiver
+        do
+          create Declined with
+            sender = proposer
+            receiver
+
+template Result
+  with
+    game : Game
+    winner : Optional Party
+  where
+    signatory game.gameId.red, game.gameId.black
+
+template Declined
+  with
+    sender : Party
+    receiver : Party
+  where
+    signatory sender, receiver
+
+
+template Game
+  with
+    gameId : GameId
+    state : GameState
+  where
+    signatory gameId.red, gameId.black
+
+    let
+      player = if state.player == Red then gameId.red else gameId.black
+      opponent = if state.player == Red then gameId.black else gameId.red
+
+    choice Move : Either (ContractId Result) (ContractId Game) with
+          move : GameMove
+        controller player
+        do
+          case tryMove state move of
+            Winner _ -> do
+              win <- create Result with winner = Some player; game = this
+              return (Left win)
+            Error e -> abort e
+            NewState ns -> do
+              newGame <- create this with state = ns
+              return (Right newGame)
+    
+    choice Forfeit : ContractId Result with
+          actor : Party
+        controller actor
+          do
+            let
+                player1 = gameId.red
+                player2 = gameId.black
+            assert (actor `elem` [player1, player2])
+            create Result with
+              game = this
+              winner = Some $ oppositePlayer actor gameId

@@ -1,0 +1,90 @@
+module Tests.Rules where
+
+import DA.Map as M
+import DA.List as L
+import DA.Assert
+import Daml.Script
+
+import Types
+
+import Rules.Data
+import Rules.Main
+import Rules.Path
+
+
+initStateMap : Script ()
+initStateMap = script do
+  case mapState $ initState () of
+    Left e -> abort e
+    Right _ -> return ()
+
+initStateWin : Script ()
+initStateWin = script do
+  case checkWin $ initState () of
+    None -> return ()
+    Some p -> abort $ show p
+
+testIntCoord : Script ()
+testIntCoord = script do
+  toIntCoord C1 === (2, 0)
+  toIntCoord A1 === (0, 0)
+  toIntCoord H8 === (7, 7)
+
+testWin : Script ()
+testWin = script do
+  let
+    filterNot f = L.filter (not . f)
+    rmBlackPieces = filterNot (\p -> p.owner == Black)
+    rmRedPieces = filterNot (\p -> p.owner == Red)
+    is = initState ()
+    redWin = is with pieces = rmBlackPieces is.pieces
+    blackWin = is with pieces = rmRedPieces is.pieces
+
+  checkWin is === None
+  checkWin redWin === Some Red
+  checkWin blackWin === Some Black
+
+testPawnPath = script do
+  path Pawn Red (4, 1) (4, 1) === Left "Null move is not valid"
+--   path Pawn Red (4, 1) (4, 2) === Right []
+--   path Pawn White False (4, 1) (4, 3) === Right [(4, 2)]
+--   path Pawn White False (4, 1) (3, 2) === Left "Invalid move"
+
+--  : MoveData -> StateMap -> Player
+testNextPlayer : Script ()
+testNextPlayer = script do
+  let 
+    player = Red
+    stateList = [ 
+        (toIntCoord(B2), Piece with coord = B2, tp = Pawn, owner = Red),
+        (toIntCoord(C3), Piece with coord = C3, tp = Pawn, owner = Black),
+        (toIntCoord(E5), Piece with coord = E5, tp = Pawn, owner = Black),
+        (toIntCoord(F4), Piece with coord = F4, tp = Pawn, owner = Black)
+      ]
+    state = GameState with
+      player
+      pieces = map (\kv -> kv._2) stateList
+      moves = []
+    move = GameMove with
+      from = B2
+      to = D4
+    piece = Piece with
+      coord = move.from
+      tp = Pawn
+      owner = player
+    stateMap = M.fromList stateList
+    moveData = MoveData with
+      state
+      stateMap
+      move
+      from = toIntCoord(move.from)
+      to = toIntCoord(move.to)
+      piece
+    newMap = M.fromList [
+        ((3,3),Piece {coord = D4, tp = Pawn, owner = Red}),
+        ((4,4),Piece {coord = E5, tp = Pawn, owner = Black}),
+        ((5,3),Piece {coord = F4, tp = Pawn, owner = Black})
+      ]
+    np = nextPlayer moveData newMap
+  debug ("next player: ", np)
+  np === Red

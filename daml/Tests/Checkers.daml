@@ -1,0 +1,24 @@
+module Tests.Checkers where
+
+import DA.Assert
+import Daml.Script
+
+import Checkers
+import Types
+
+type ResultOrNextGame = Either (ContractId Result) (ContractId Game)
+
+takeMove : Script ResultOrNextGame -> (Party, Coord, Coord) -> Script ResultOrNextGame
+takeMove seg (player, from, to) = do
+  eg <- seg
+  case eg of
+    Left _ -> abort "Can't continue won game"
+    Right g -> submit player do
+      exerciseCmd g Move with move = GameMove with from, to
+
+
+testEnum : Script ()
+testEnum = script do
+  let lst = [0..63]
+  let coords = [A1 .. H8]
+  lst === fmap fromEnum coords
